@@ -8,7 +8,7 @@ created: 2026-09-09
 updated: 2026-09-09
 ---
 
-# 🏛️ Architecture Spine: Assignee Filter Option
+# 🏛️ Architecture Spine: Assignee Filer Option
 ## System Solutioning & Invariant Contract (Phase 3A)
 
 ---
