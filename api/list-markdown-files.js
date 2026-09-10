@@ -1,6 +1,6 @@
 // ACL-ADLC Markdown Studio Serverless List Files Endpoint (Vercel + GitHub REST API)
-import fs from 'node:fs';
-import path from 'node:path';
+const fs = require('node:fs');
+const path = require('node:path');
 
 const EXCLUDED_FILENAMES = new Set([
   'skill.md',
@@ -56,12 +56,7 @@ function parseMarkdownMetadata(content, fullPath, statTime = null) {
     const rawTier = tierMatch[1].trim().toLowerCase();
     if (rawTier.includes('1') || rawTier.includes('spec') || rawTier.includes('self-contained')) {
       tier = '1';
-    } else if (
-      rawTier.includes('2') ||
-      rawTier.includes('major') ||
-      rawTier.includes('enterprise') ||
-      rawTier.includes('architecture')
-    ) {
+    } else if (rawTier.includes('2') || rawTier.includes('major') || rawTier.includes('enterprise') || rawTier.includes('architecture')) {
       tier = '2';
     }
   }
@@ -86,15 +81,10 @@ function parseMarkdownMetadata(content, fullPath, statTime = null) {
   };
 }
 
-// In-memory cache for GitHub responses to minimize API rate limit usage
-let cacheData = null;
-let cacheTime = 0;
-const CACHE_TTL_MS = 1000; // 1 second cache TTL for live responsiveness
-
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-GitHub-Token');
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
 
   if (req.method === 'OPTIONS') {
@@ -104,20 +94,28 @@ export default async function handler(req, res) {
   }
 
   try {
-    const now = Date.now();
-    const reqUrl = req.url || '';
-    const bypassCache = reqUrl.includes('nocache=1') || reqUrl.includes('force=1');
+    const urlObj = new URL(req.url, 'http://localhost');
+    const qOwner = urlObj.searchParams.get('owner');
+    const qRepo = urlObj.searchParams.get('repo');
+    const qBranch = urlObj.searchParams.get('branch');
+    const qToken = urlObj.searchParams.get('token');
 
-    if (!bypassCache && cacheData && now - cacheTime < CACHE_TTL_MS) {
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(cacheData));
-      return;
-    }
+    const rawHeaderAuth = req.headers['authorization'] || '';
+    const rawCustomToken = req.headers['x-github-token'] || '';
 
-    const token = (process.env.GITHUB_TOKEN || process.env.GH_TOKEN || process.env.GITHUB_PAT || '').trim();
-    let owner = (process.env.GITHUB_OWNER || process.env.VERCEL_GIT_REPO_OWNER || '').trim();
-    let repo = (process.env.GITHUB_REPO || process.env.VERCEL_GIT_REPO_SLUG || '').trim();
-    const branch = (process.env.GITHUB_BRANCH || process.env.VERCEL_GIT_COMMIT_REF || 'main').trim();
+    const token = (
+      rawCustomToken ||
+      rawHeaderAuth.replace(/^Bearer\s+/i, '').replace(/^token\s+/i, '') ||
+      qToken ||
+      process.env.GITHUB_TOKEN ||
+      process.env.GH_TOKEN ||
+      process.env.GITHUB_PAT ||
+      ''
+    ).trim();
+
+    let owner = (qOwner || process.env.GITHUB_OWNER || process.env.VERCEL_GIT_REPO_OWNER || '').trim();
+    let repo = (qRepo || process.env.GITHUB_REPO || process.env.VERCEL_GIT_REPO_SLUG || '').trim();
+    const branch = (qBranch || process.env.GITHUB_BRANCH || process.env.VERCEL_GIT_COMMIT_REF || 'main').trim();
 
     if (!owner || !repo) {
       try {
@@ -150,9 +148,12 @@ export default async function handler(req, res) {
           'User-Agent': 'ACL-ADLC-Markdown-Studio',
         };
         if (token) {
-          headers.Authorization = token.startsWith('Bearer ') || token.startsWith('token ')
-            ? token
-            : (token.startsWith('ghp_') ? `token ${token}` : `Bearer ${token}`);
+          headers.Authorization =
+            token.startsWith('Bearer ') || token.startsWith('token ')
+              ? token
+              : token.startsWith('ghp_')
+                ? `token ${token}`
+                : `Bearer ${token}`;
         }
 
         const treeUrl = `https://api.github.com/repos/${owner}/${repo}/git/trees/${encodeURIComponent(branch)}?recursive=1`;
@@ -197,29 +198,22 @@ export default async function handler(req, res) {
                 if (f.folderPath === 'root' || !f.folderPath.includes('0-context')) {
                   seenMap.set(key, f);
                 }
-              } else if (
-                existing.folderPath === 'root' ||
-                (!existing.folderPath.match(/[0-4]-/) && f.folderPath.match(/[0-4]-/))
-              ) {
+              } else if (existing.folderPath === 'root' || (!existing.folderPath.match(/[0-4]-/) && f.folderPath.match(/[0-4]-/))) {
                 seenMap.set(key, f);
               }
             }
           }
           const deduplicated = Array.from(seenMap.values());
-          deduplicated.sort((a, b) =>
-            a.fullPath.localeCompare(b.fullPath, undefined, { numeric: true, sensitivity: 'base' }),
-          );
+          deduplicated.sort((a, b) => a.fullPath.localeCompare(b.fullPath, undefined, { numeric: true, sensitivity: 'base' }));
 
           let activeTier = deduplicated.some(
             (f) =>
-              (f.filename || '').toLowerCase().includes('epics.md') ||
-              (f.filename || '').toLowerCase().includes('spine') ||
-              f.tier === '2',
+              (f.filename || '').toLowerCase().includes('epics.md') || (f.filename || '').toLowerCase().includes('spine') || f.tier === '2',
           )
             ? '2'
             : deduplicated.find((f) => f.tier)?.tier || '1';
 
-          cacheData = {
+          const responsePayload = {
             success: true,
             files: deduplicated,
             activeTier: activeTier,
@@ -229,10 +223,9 @@ export default async function handler(req, res) {
             repo: `${owner}/${repo}`,
             branch: branch,
           };
-          cacheTime = Date.now();
 
           res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify(cacheData));
+          res.end(JSON.stringify(responsePayload));
           return;
         }
       } catch {
@@ -280,29 +273,21 @@ export default async function handler(req, res) {
           if (f.folderPath === 'root' || !f.folderPath.includes('0-context')) {
             seenDisk.set(key, f);
           }
-        } else if (
-          existing.folderPath === 'root' ||
-          (!existing.folderPath.match(/[0-4]-/) && f.folderPath.match(/[0-4]-/))
-        ) {
+        } else if (existing.folderPath === 'root' || (!existing.folderPath.match(/[0-4]-/) && f.folderPath.match(/[0-4]-/))) {
           seenDisk.set(key, f);
         }
       }
     }
     const finalDiskList = Array.from(seenDisk.values());
-    finalDiskList.sort((a, b) =>
-      a.fullPath.localeCompare(b.fullPath, undefined, { numeric: true, sensitivity: 'base' }),
-    );
+    finalDiskList.sort((a, b) => a.fullPath.localeCompare(b.fullPath, undefined, { numeric: true, sensitivity: 'base' }));
 
     let diskActiveTier = finalDiskList.some(
-      (f) =>
-        (f.filename || '').toLowerCase().includes('epics.md') ||
-        (f.filename || '').toLowerCase().includes('spine') ||
-        f.tier === '2',
+      (f) => (f.filename || '').toLowerCase().includes('epics.md') || (f.filename || '').toLowerCase().includes('spine') || f.tier === '2',
     )
       ? '2'
       : finalDiskList.find((f) => f.tier)?.tier || '1';
 
-    cacheData = {
+    const diskPayload = {
       success: true,
       files: finalDiskList,
       activeTier: diskActiveTier,
@@ -310,10 +295,9 @@ export default async function handler(req, res) {
       version: '6.11.20',
       source: 'local-disk',
     };
-    cacheTime = Date.now();
 
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify(cacheData));
+    res.end(JSON.stringify(diskPayload));
   } catch (err) {
     res.writeHead(500, { 'Content-Type': 'application/json' });
     res.end(
