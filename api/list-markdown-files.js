@@ -1,6 +1,6 @@
 // ACL-ADLC Markdown Studio Serverless List Files Endpoint (Vercel + GitHub REST API)
-const fs = require('node:fs');
-const path = require('node:path');
+import fs from 'node:fs';
+import path from 'node:path';
 
 const EXCLUDED_FILENAMES = new Set([
   'skill.md',
@@ -110,7 +110,7 @@ function compareStoriesAndFiles(a, b) {
   return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
 }
 
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-GitHub-Token');
