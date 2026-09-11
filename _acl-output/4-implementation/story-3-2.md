@@ -1,8 +1,8 @@
 ---
-status: Approved
+status: In Review
 reviewed_by: Manager (via Markdown Studio)
-review_timestamp: 2026-09-10T04:33:30.030Z
-gate_signature: ACL-STUDIO-APPROVAL-APPROVED
+review_timestamp: 2026-09-11T03:44:02.461Z
+gate_signature: ACL-STUDIO-APPROVAL-IN-REVIEW
 title: "Story 3.2: Empty Results State & Filter Reset"
 tier: Tier 2 (Major Overhaul)
 story_id: "3.2"
