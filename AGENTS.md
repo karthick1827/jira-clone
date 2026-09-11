@@ -14,14 +14,24 @@ Open source framework for structured, agent-assisted software delivery.
 ## 🚦 Phase Gate Approval Invariants (Mandatory & Non-Negotiable)
 
 - **Universal Sequential Document Gate for ALL Agents & Skills**:
-  - EVERY single agent (Sally UX Designer, Winston Architect, Amelia Developer, Mary Analyst, etc.) and EVERY skill (`acl-architecture`, `acl-ux`, `acl-create-epics-and-stories`, `acl-quick-dev`, `acl-figma-bridge`, etc.) MUST FIRST verify that ALL upstream documents in `_acl-output/` have `status: Approved`.
-  - If **ANY** prerequisite document in `_acl-output/` is missing, or has ANY status other than `Approved` (e.g. `In Review`, `draft`, `Pending`, `Rejected`):
+  - EVERY single agent (Sally UX Designer, Winston Architect, Amelia Developer, Mary Analyst, etc.) and EVERY skill (`acl-architecture`, `acl-ux`, `acl-create-epics-and-stories`, `acl-quick-dev`, `acl-figma-bridge`, etc.) across ALL AI tools (Cursor, Antigravity, AGY, GitHub Copilot, Claude Code, Windsurf, Roo Code, etc.) MUST FIRST verify that all applicable upstream phase deliverables in `_acl-output/` have `status: Approved`.
+  - **Prerequisite Deliverables Scope (What Requires Approval)**:
+    - Phase 1: `_acl-output/1-analysis/acl-product-brief/brief.md`
+    - Phase 2: `_acl-output/2-plan-workflows/acl-prd/prd.md`
+    - Phase 3A: `_acl-output/3-solutioning/acl-architecture/architecture-spine.md` (or `architecture.md`)
+    - Phase 3B: `_acl-output/3-solutioning/acl-create-epics-and-stories/epics.md`
+    - Phase 4: `_acl-output/4-implementation/story-<epic_num>-<story_num>.md` (Tier 2) or `_acl-output/4-implementation/spec-<feature-slug>.md` (Tier 1)
+  - **STRICT EXCLUSIONS (Internal Working Files NEVER Require Approval)**:
+    - Internal working memory logs (`.memlog.md`, `*-memlog.md`), supplementary child files (`addendum.md`, `sources.md`, `research.md`, `review-triage.md`, `patch-plan.md`, `test-summary.md`), and test directories are internal AI working artifacts.
+    - AI agents MUST NEVER evaluate internal memory logs or child files for approval status, and MUST NEVER block gates based on them. Gate evaluation applies STRICTLY to the primary deliverables listed above.
+  - If **ANY** required upstream phase deliverable listed above is missing, or has ANY status other than `Approved` (e.g. `In Review`, `draft`, `Pending`, `Rejected`):
     - **TOTAL AGENT BLOCK (NO PERSONAS, NO CHATTING, NO BRAINSTORMING, NO FILE GENERATION)**:
       - The AI Agent is **STRICTLY FORBIDDEN** from adopting personas or greeting the user as an agent.
       - The AI Agent is **STRICTLY FORBIDDEN** from offering conversational advice, whiteboard diagrams, or brainstorming in chat while waiting for approval.
       - The AI Agent is **STRICTLY FORBIDDEN** from creating, updating, or modifying downstream files.
       - The AI Agent is **STRICTLY FORBIDDEN** from asking or suggesting the user/developer to self-approve or change the status.
     - **THE ONLY PERMITTED ACTION**: The AI Agent MUST inform the user to WAIT for Manager sign-off:
+
       ```text
       ========================================================================
       ⏳ [GATE LOCKED]: Awaiting Manager Sign-Off (ACL-ADLC Protocol)
@@ -30,12 +40,12 @@ Open source framework for structured, agent-assisted software delivery.
       🏷️ Current Status:      [IN REVIEW / PENDING]
 
       ⚠️ STATUS:
-         As per the ACL-ADLC sequential delivery framework, this document 
+         As per the ACL-ADLC sequential delivery framework, this document
          is currently awaiting official review and sign-off by your Manager.
 
       👉 NEXT STEP:
-         Please wait for your manager to review and mark this document as 
-         'Approved' or 'Rejected' in Markdown Studio before proceeding with 
+         Please wait for your manager to review and mark this document as
+         'Approved' or 'Rejected' in Markdown Studio before proceeding with
          downstream tasks (<Next Phase / Skill Name>).
       ========================================================================
       ```
@@ -45,9 +55,11 @@ Open source framework for structured, agent-assisted software delivery.
 Whenever the developer asks for a feature, bugfix, or code change in a Brownfield project:
 
 #### Case A: Tier is Explicitly Specified in the User Prompt
-If the user specifies a tier (e.g., *"Tier 1: create notification drawer"*, *"Tier 2: migrate database"*, or *"use Tier 1"*), the AI Agent immediately follows the rules of that tier without asking.
+
+If the user specifies a tier (e.g., _"Tier 1: create notification drawer"_, _"Tier 2: migrate database"_, or _"use Tier 1"_), the AI Agent immediately follows the rules of that tier without asking.
 
 #### Case B: No Tier is Specified in the User Prompt
+
 The AI Agent **MUST NOT** immediately write code or modify files.  
 The AI Agent **MUST FIRST** output the following interactive prompt and **STOP** to await the user's choice:
 
@@ -78,6 +90,7 @@ Please choose which Tier you want to proceed with:
 > ⚠️ **GOVERNANCE POLICY**: Every change, bugfix, or feature in a Brownfield project requires at minimum a 1-Page Spec with Manager Sign-Off in Markdown Studio (**Tier 1**), or full sequential governance for major architectural overhauls (**Tier 2**). Direct unverified code generation without an approved spec is strictly forbidden.
 
 #### 🟡 Tier 1: Self-Contained Features & Tweaks (1-Page Spec + Manager Approval Gate)
+
 - **Scope**: All standard features, standalone dialogs, modals, widgets, UI tweaks, bug fixes, or components.
 - **Workflow**:
   1. **Spec Generation**: The AI Agent creates a concise 1-page specification in `_acl-output/4-implementation/spec-<feature-slug>.md` with frontmatter:
@@ -94,6 +107,7 @@ Please choose which Tier you want to proceed with:
      - The AI Agent **MUST IMMEDIATELY HALT**.
      - The AI Agent is **STRICTLY FORBIDDEN** from generating or modifying any application code.
      - The AI Agent **MUST** output the Gate Lock banner:
+
        ```text
        ========================================================================
        ⏳ [GATE LOCKED]: Awaiting Manager Sign-Off (ACL-ADLC Protocol)
@@ -102,28 +116,30 @@ Please choose which Tier you want to proceed with:
        🏷️ Current Status:      [IN REVIEW]
 
        ⚠️ STATUS:
-          As per the Brownfield Tier 1 protocol, this 1-page specification 
+          As per the Brownfield Tier 1 protocol, this 1-page specification
           is currently awaiting official review and sign-off by your Manager.
           Code implementation is strictly locked until approved.
 
        👉 NEXT STEP:
-          Please open Markdown Studio (http://localhost:5173/markdown.html) 
-          and have your Manager review and mark this document as 'Approved' 
+          Please open Markdown Studio (http://localhost:5173/markdown.html)
+          and have your Manager review and mark this document as 'Approved'
           or 'Rejected' before proceeding with code implementation.
        ========================================================================
        ```
+
   3. **Verification Before Coding**:
      - When the developer later asks to implement the code, the AI Agent **MUST check the status** of `spec-<feature-slug>.md`.
      - If `status: Approved`: The AI Agent is **UNBLOCKED** and proceeds to implement the code.
      - If `status: In Review`, `status: Rejected`, or missing: The AI Agent **REMAINS BLOCKED** and refuses to write code.
 
 #### 🔴 Tier 2: Major Architectural Overhauls
+
 - **Scope**: Complete framework upgrades, database schema rewrites, replacing global state/auth paradigms, or major cross-cutting capabilities.
 - **Sequential Pipeline**:
   1. **Phase 1 (Product Brief)**: The AI Agent **FIRST** creates `_acl-output/1-analysis/acl-product-brief/brief.md` with frontmatter:
      ```yaml
      ---
-     title: "Product Brief: <Feature/Overhaul Name>"
+     title: 'Product Brief: <Feature/Overhaul Name>'
      project_type: brownfield
      tier: Tier 2 (Major Overhaul)
      status: In Review
@@ -143,6 +159,7 @@ Please choose which Tier you want to proceed with:
        - The AI Agent **MUST IMMEDIATELY HALT**.
        - The AI Agent is **STRICTLY FORBIDDEN** from generating or modifying application code for this story.
        - The AI Agent **MUST** output the Gate Lock banner:
+
          ```text
          ========================================================================
          ⏳ [GATE LOCKED]: Awaiting Manager Sign-Off (ACL-ADLC Protocol)
@@ -151,16 +168,17 @@ Please choose which Tier you want to proceed with:
          🏷️ Current Status:      [IN REVIEW]
 
          ⚠️ STATUS:
-            As per the Brownfield Tier 2 protocol, implementation of Story <epic_num>.<story_num> 
+            As per the Brownfield Tier 2 protocol, implementation of Story <epic_num>.<story_num>
             is currently awaiting official review and sign-off by your Manager.
             Code implementation for this story is strictly locked until approved.
 
          👉 NEXT STEP:
-            Please open Markdown Studio (http://localhost:5173/markdown.html) 
-            and have your Manager review and mark this story specification as 'Approved' 
+            Please open Markdown Studio (http://localhost:5173/markdown.html)
+            and have your Manager review and mark this story specification as 'Approved'
             or 'Rejected' before proceeding with code implementation.
          ========================================================================
          ```
+
      - **Verification Before Story Coding**:
        - The AI Agent checks the status of `_acl-output/4-implementation/story-<epic_num>-<story_num>.md`.
        - If `status: Approved`: The AI Agent is **UNBLOCKED** to implement the application code for this story.
@@ -170,6 +188,7 @@ Please choose which Tier you want to proceed with:
 ---
 
 ## 🛑 STRICT PROHIBITION: No Direct AI Status Manipulation & Manager-Only Approval
+
 - The AI agent is **STRICTLY PROHIBITED** from using tools (`replace_file_content`, `write_to_file`, `run_command`, etc.) to change `status: In Review` -> `status: Approved` at ANY cost.
 - ONLY THE MANAGER is authorized and permitted to change the status via Markdown Studio (`markdown.html`).
 - The AI agent is **STRICTLY PROHIBITED** from prompting the developer to self-approve or change review statuses.
