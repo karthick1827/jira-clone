@@ -1,44 +1,97 @@
-// ACL-ADLC Markdown Studio Serverless Save Endpoint (Vercel + GitHub REST API)
+// Universal Serverless Function: save-markdown.js
+// Works seamlessly across Vercel, Netlify, AWS Lambda, Firebase Functions, and local Node.js
 import fs from 'node:fs';
 import path from 'node:path';
 
-export default async function handler(req, res) {
-  // CORS Headers
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-GitHub-Token');
+async function universalHandler(arg1, arg2) {
+  const corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-GitHub-Token',
+    'Content-Type': 'application/json',
+  };
 
-  if (req.method === 'OPTIONS') {
-    res.writeHead(200);
-    res.end();
-    return;
+  const isStream = Boolean(arg2 && typeof arg2.writeHead === 'function');
+
+  function reply(statusCode, payload) {
+    const bodyStr = typeof payload === 'string' ? payload : JSON.stringify(payload);
+    if (isStream) {
+      arg2.writeHead(statusCode, corsHeaders);
+      arg2.end(bodyStr);
+      return;
+    }
+    return {
+      statusCode,
+      headers: corsHeaders,
+      body: bodyStr,
+    };
   }
 
-  if (req.method !== 'POST') {
-    res.writeHead(405, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ success: false, error: 'Method Not Allowed. Use POST.' }));
-    return;
+  const httpMethod = (isStream ? arg1.method : arg1 && arg1.httpMethod) || 'GET';
+  if (httpMethod === 'OPTIONS') {
+    return reply(200, '');
+  }
+
+  if (httpMethod !== 'POST') {
+    return reply(405, { success: false, error: 'Method Not Allowed. Use POST.' });
   }
 
   try {
-    let payload = req.body;
-    if (typeof payload === 'string') {
+    let payload = null;
+    let rawHeaders = {};
+    let qParams = {};
+
+    if (isStream) {
+      const req = arg1;
+      rawHeaders = req.headers || {};
       try {
-        payload = JSON.parse(payload);
+        const urlObj = new URL(req.url, 'http://localhost');
+        qParams = Object.fromEntries(urlObj.searchParams.entries());
       } catch {
-        // Ignore parse error
+        qParams = {};
       }
-    } else if (!payload) {
-      const chunks = [];
-      for await (const chunk of req) {
-        chunks.push(chunk);
+
+      if (req.body) {
+        if (typeof req.body === 'string') {
+          try {
+            payload = JSON.parse(req.body);
+          } catch {
+            payload = null;
+          }
+        } else {
+          payload = req.body;
+        }
+      } else {
+        const chunks = [];
+        for await (const chunk of req) {
+          chunks.push(chunk);
+        }
+        const raw = Buffer.concat(chunks).toString('utf8');
+        if (raw) {
+          try {
+            payload = JSON.parse(raw);
+          } catch {
+            payload = null;
+          }
+        }
       }
-      const raw = Buffer.concat(chunks).toString('utf8');
-      if (raw) {
-        try {
-          payload = JSON.parse(raw);
-        } catch {
-          // Ignore parse error
+    } else {
+      const event = arg1 || {};
+      rawHeaders = event.headers || {};
+      qParams = event.queryStringParameters || {};
+      let rawBody = event.body;
+      if (event.isBase64Encoded && rawBody) {
+        rawBody = Buffer.from(rawBody, 'base64').toString('utf8');
+      }
+      if (rawBody) {
+        if (typeof rawBody === 'string') {
+          try {
+            payload = JSON.parse(rawBody);
+          } catch {
+            payload = null;
+          }
+        } else {
+          payload = rawBody;
         }
       }
     }
@@ -46,9 +99,7 @@ export default async function handler(req, res) {
     const { folderPath, filename, content, status } = payload || {};
 
     if (!filename || typeof content !== 'string') {
-      res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ success: false, error: 'Missing required fields: filename and content.' }));
-      return;
+      return reply(400, { success: false, error: 'Missing required fields: filename and content.' });
     }
 
     // Path normalization: canonical phase structure inside _acl-output/
@@ -66,7 +117,8 @@ export default async function handler(req, res) {
           cleanFolder = '1-analysis/acl-product-brief';
           break;
         }
-        case 'prd.md': {
+        case 'prd.md':
+        case 'reconcile-brief.md': {
           cleanFolder = '2-plan-workflows/acl-prd';
           break;
         }
@@ -80,7 +132,12 @@ export default async function handler(req, res) {
           break;
         }
         default: {
-          if (/^story-\d+/i.test(lowerName) || /^spec-/i.test(lowerName)) {
+          if (
+            lowerName.startsWith('spec-') ||
+            lowerName.startsWith('story-') ||
+            /^story-\d+/i.test(lowerName) ||
+            /^spec-/i.test(lowerName)
+          ) {
             cleanFolder = '4-implementation';
           } else {
             cleanFolder = '';
@@ -93,27 +150,60 @@ export default async function handler(req, res) {
     const repoFilePath = cleanFolder ? `_acl-output/${cleanFolder}/${cleanFilename}` : `_acl-output/${cleanFilename}`;
 
     // Detect GitHub Configuration: Check headers, body, or environment variables
-    const rawHeaderAuth = req.headers['authorization'] || '';
-    const rawCustomToken = req.headers['x-github-token'] || '';
+    const rawHeaderAuth = rawHeaders['authorization'] || rawHeaders['Authorization'] || '';
+    const rawCustomToken = rawHeaders['x-github-token'] || rawHeaders['X-GitHub-Token'] || '';
     const rawBodyToken = (payload && payload.githubToken) || '';
+    const qToken = qParams.token;
 
     const token = (
       rawCustomToken ||
       rawHeaderAuth.replace(/^Bearer\s+/i, '').replace(/^token\s+/i, '') ||
       rawBodyToken ||
+      qToken ||
       process.env.GITHUB_TOKEN ||
       process.env.GH_TOKEN ||
       process.env.GITHUB_PAT ||
       ''
     ).trim();
 
-    let owner = ((payload && payload.githubOwner) || process.env.GITHUB_OWNER || process.env.VERCEL_GIT_REPO_OWNER || '').trim();
+    let owner = (
+      (payload && payload.githubOwner) ||
+      qParams.owner ||
+      process.env.GITHUB_OWNER ||
+      process.env.VERCEL_GIT_REPO_OWNER ||
+      ''
+    ).trim();
 
-    let repo = ((payload && payload.githubRepo) || process.env.GITHUB_REPO || process.env.VERCEL_GIT_REPO_SLUG || '').trim();
+    let repo = (
+      (payload && payload.githubRepo) ||
+      qParams.repo ||
+      process.env.GITHUB_REPO ||
+      process.env.VERCEL_GIT_REPO_SLUG ||
+      ''
+    ).trim();
 
-    const branch = ((payload && payload.githubBranch) || process.env.GITHUB_BRANCH || process.env.VERCEL_GIT_COMMIT_REF || 'main').trim();
+    const branch = (
+      (payload && payload.githubBranch) ||
+      qParams.branch ||
+      process.env.GITHUB_BRANCH ||
+      process.env.VERCEL_GIT_COMMIT_REF ||
+      process.env.BRANCH ||
+      process.env.HEAD ||
+      'main'
+    ).trim();
 
-    // Auto-detect owner and repo from package.json if not explicitly provided
+    // Auto-detect owner and repo from Netlify REPOSITORY_URL or package.json if not explicitly provided
+    if (!owner || !repo) {
+      const netlifyRepoUrl = process.env.REPOSITORY_URL || '';
+      if (netlifyRepoUrl) {
+        const match = netlifyRepoUrl.match(/github\.com[:/]([^/]+)\/([^/.]+)/);
+        if (match) {
+          if (!owner) owner = match[1];
+          if (!repo) repo = match[2].replace(/\.git$/, '');
+        }
+      }
+    }
+
     if (!owner || !repo) {
       try {
         const pkgPath = path.join(process.cwd(), 'package.json');
@@ -133,12 +223,15 @@ export default async function handler(req, res) {
       }
     }
 
-    // Default repository fallback
-    if (!owner) owner = 'karthick1827';
-    if (!repo) repo = 'jira-clone';
-
     // 1. If GitHub Token is configured: Commit to GitHub via REST API
     if (token) {
+      if (!owner || !repo) {
+        return reply(400, {
+          success: false,
+          error: 'No GitHub repository specified for cloud commit.',
+          hint: 'Please configure GITHUB_OWNER and GITHUB_REPO in environment variables, or enter them in Markdown Studio Cloud Sync settings.',
+        });
+      }
       const authHeader =
         token.startsWith('Bearer ') || token.startsWith('token ') ? token : token.startsWith('ghp_') ? `token ${token}` : `Bearer ${token}`;
 
@@ -157,25 +250,17 @@ export default async function handler(req, res) {
           const fileData = await getRes.json();
           sha = fileData.sha;
         } else if (getRes.status === 401) {
-          res.writeHead(401, { 'Content-Type': 'application/json' });
-          res.end(
-            JSON.stringify({
-              success: false,
-              error: 'GitHub Token is invalid or expired. Please check your token or re-enter it in Cloud Sync Settings.',
-            }),
-          );
-          return;
+          return reply(401, {
+            success: false,
+            error: 'GitHub Token is invalid or expired. Please check your token or re-enter it in Cloud Sync Settings.',
+          });
         } else if (getRes.status === 403) {
           const errBody = await getRes.text();
-          res.writeHead(403, { 'Content-Type': 'application/json' });
-          res.end(
-            JSON.stringify({
-              success: false,
-              error: `GitHub token lacks permission: ${errBody}`,
-              hint: 'Token needs repo or contents:write permissions.',
-            }),
-          );
-          return;
+          return reply(403, {
+            success: false,
+            error: `GitHub token lacks permission: ${errBody}`,
+            hint: 'Token needs repo or contents:write permissions.',
+          });
         }
       } catch {
         // Network or fetch error
@@ -204,15 +289,11 @@ export default async function handler(req, res) {
 
       if (!putRes.ok) {
         const errText = await putRes.text();
-        res.writeHead(putRes.status, { 'Content-Type': 'application/json' });
-        res.end(
-          JSON.stringify({
-            success: false,
-            error: `GitHub Commit failed (${putRes.status}): ${errText}`,
-            hint: 'Verify GITHUB_TOKEN has write access (contents:write or repo scope) to ' + owner + '/' + repo,
-          }),
-        );
-        return;
+        return reply(putRes.status, {
+          success: false,
+          error: `GitHub Commit failed (${putRes.status}): ${errText}`,
+          hint: 'Verify GITHUB_TOKEN has write access (contents:write or repo scope) to ' + owner + '/' + repo,
+        });
       }
 
       const commitResult = await putRes.json();
@@ -226,20 +307,16 @@ export default async function handler(req, res) {
         // Local write is optional on serverless environments
       }
 
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(
-        JSON.stringify({
-          success: true,
-          mode: 'github',
-          repo: `${owner}/${repo}`,
-          branch: branch,
-          path: repoFilePath,
-          commitSha: commitResult.commit?.sha || commitResult.sha,
-          status: status,
-          message: `Successfully committed ${cleanFilename} to ${owner}/${repo}@${branch}`,
-        }),
-      );
-      return;
+      return reply(200, {
+        success: true,
+        mode: 'github',
+        repo: `${owner}/${repo}`,
+        branch: branch,
+        path: repoFilePath,
+        commitSha: commitResult.commit?.sha || commitResult.sha,
+        status: status,
+        message: `Successfully committed ${cleanFilename} to ${owner}/${repo}@${branch}`,
+      });
     }
 
     // 2. Fallback: Save to local filesystem if no GitHub Token configured
@@ -248,35 +325,29 @@ export default async function handler(req, res) {
       fs.mkdirSync(path.dirname(localTarget), { recursive: true });
       fs.writeFileSync(localTarget, content, 'utf8');
 
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(
-        JSON.stringify({
-          success: true,
-          mode: 'local-disk',
-          path: repoFilePath,
-          status: status,
-          warning:
-            'Saved to local disk only. To enable cloud commits on Vercel, configure GITHUB_TOKEN in Vercel environment variables or enter it in Markdown Studio Cloud Sync settings.',
-        }),
-      );
+      return reply(200, {
+        success: true,
+        mode: 'local-disk',
+        path: repoFilePath,
+        status: status,
+        warning:
+          'Saved to local disk only. To enable cloud commits on Vercel or Netlify, configure GITHUB_TOKEN in platform environment variables or enter it in Markdown Studio Cloud Sync settings.',
+      });
     } catch {
-      res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(
-        JSON.stringify({
-          success: false,
-          error:
-            'GITHUB_TOKEN is missing. Click "🐙 Cloud Sync" in the top header to enter your token, or add GITHUB_TOKEN in Vercel settings.',
-          hint: 'Click "🐙 Cloud Sync" in the top bar to paste your GitHub token.',
-        }),
-      );
+      return reply(500, {
+        success: false,
+        error:
+          'GITHUB_TOKEN is missing. Click "🐙 Cloud Sync" in the top header to enter your token, or add GITHUB_TOKEN in your platform settings.',
+        hint: 'Click "🐙 Cloud Sync" in the top bar to paste your GitHub token.',
+      });
     }
   } catch (err) {
-    res.writeHead(500, { 'Content-Type': 'application/json' });
-    res.end(
-      JSON.stringify({
-        success: false,
-        error: err.message,
-      }),
-    );
+    return reply(500, {
+      success: false,
+      error: err.message,
+    });
   }
-};
+}
+
+module.exports = universalHandler;
+module.exports.handler = universalHandler;

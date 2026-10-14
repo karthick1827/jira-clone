@@ -11,10 +11,68 @@ Open source framework for structured, agent-assisted software delivery.
 - Skill validation rules are in `tools/skill-validator.md`.
 - Deterministic skill checks run via `npm run validate:skills` (included in `quality`).
 
+## 🛑 CRITICAL PRE-FLIGHT CHECK (MANDATORY BEFORE ANY TOOL CALL OR ACTION)
+
+**APPLIES TO ALL AGENTS ACROSS ALL TOOLS (Cursor, GitHub Copilot, Claude Code, Windsurf, AGY, Antigravity, Roo Code, etc.)**:
+
+> ⚠️ **APPLICABILITY SCOPE**:
+> - **Application Projects Managed by ACL-ADLC**: This Pre-Flight Check and Delivery Governance apply strictly to **Application Projects** (target software projects where phase documents and code are delivered into `_acl-output/`).
+> - **Framework Source Code Exemption**: This check does **NOT** apply to internal development, testing, CLI tooling, or maintenance inside the **`ACL-ADLC` framework repository itself** (which is governed by automated tests and `npm run quality`).
+
+### Project Lifecycle Determination: Greenfield vs. Brownfield
+
+1. **GREENFIELD PROJECTS (Day 0 Initial Project / MVP Creation)**:
+   - When building a new project from scratch, the AI Agent **DOES NOT PROMPT FOR A TIER**.
+   - The AI Agent **MUST EXECUTE ALL SEQUENTIAL PHASES IN ORDER**:
+     - **Phase 1**: Product Brief (`brief.md`) -> Manager Sign-Off Gate
+     - **Phase 2**: PRD (`prd.md`) -> Manager Sign-Off Gate
+     - **Phase 3A**: Architecture Spine (`architecture-spine.md`) -> Manager Sign-Off Gate
+     - **Phase 3B**: Epics & Stories (`epics.md`) -> Manager Sign-Off Gate
+     - **Phase 4**: Story Implementation (`story-<num>-<num>.md`) -> Manager Sign-Off Gate -> Code
+   - Direct code generation is strictly forbidden until each phase gate is approved by the Manager in Markdown Studio.
+
+2. **BROWNFIELD PROJECTS (Existing Project / Feature Addition / Tweak / Bugfix)**:
+   - **Default Mode (No "quick dev" tag)**:
+     - When the developer's prompt does **NOT** explicitly tag or mention `quick dev` (or `@acl-quick-dev` / `/acl-quick-dev`):
+       - Do **NOT** prompt for Tier 1 / Tier 2.
+       - Do **NOT** create spec files in `_acl-output/4-implementation/`.
+       - Do **NOT** lock execution or wait for Manager sign-off.
+       - Answer questions, review code, or apply changes directly and normally as requested.
+   - **Governed Mode (Explicit "quick dev" tag)**:
+     - The Brownfield Tier Governance workflow is **STRICTLY OPT-IN**.
+     - Whenever the developer **explicitly tags or mentions `quick dev`** (e.g., `quick dev: <task>`, `@acl-quick-dev <task>`, or `/acl-quick-dev <task>`):
+       - **Case A: Tier is Explicitly Specified in the User Prompt** (e.g., *"quick dev Tier 1: add dark mode"*, *"quick dev Tier 2: database overhaul"*, *"use Tier 1"*):
+         - Follow the rules of that tier immediately.
+       - **Case B: No Tier is Specified in the User Prompt**:
+         - The AI Agent **MUST NOT** write code or edit files.
+         - The AI Agent **MUST IMMEDIATELY OUTPUT** the interactive Tier Selection prompt and **STOP / HALT** to await the user's choice:
+
+```text
+========================================================================
+📊 [FEATURE / CHANGE ASSESSMENT]: Choose Execution Tier
+========================================================================
+🎯 Feature / Change:   <Summary of requested work>
+💡 AI Recommendation:  [Tier 1 / Tier 2 based on blast radius]
+
+Please choose which Tier you want to proceed with:
+
+  [1] Tier 1 — Self-Contained Spec (1-Page Story + Manager Sign-Off)
+      📝 AI generates a 1-page Spec in _acl-output/4-implementation/ (status: In Review).
+      ⏳ Code implementation is strictly LOCKED until Manager approves in Markdown Studio.
+
+  [2] Tier 2 — Major Architectural Overhaul / Full Cascade
+      🏛️ Full sequential governance (Product Brief -> PRD -> Architecture Spine -> Epics).
+
+👉 Reply with 1 or 2 to proceed:
+========================================================================
+```
+
+---
+
 ## 🚦 Phase Gate Approval Invariants (Mandatory & Non-Negotiable)
 
 - **The Closed 3-Value Frontmatter Status Enum Rule (Strict & Non-Negotiable)**:
-  - The frontmatter `status` field across ALL deliverables, specs, and documents in `_acl-output/` is **STRICTLY AN ENUM OF ONLY THREE PERMITTED VALUES**:
+  - The frontmatter `status` field across ALL primary phase deliverables in `_acl-output/` (listed below) is **STRICTLY AN ENUM OF ONLY THREE PERMITTED VALUES**:
     1. `status: In Review` (Document generated, updated, or awaiting review)
     2. `status: Approved` (Official sign-off granted by Manager in Markdown Studio)
     3. `status: Rejected` (Manager rejected document, revisions required)
@@ -31,13 +89,14 @@ Open source framework for structured, agent-assisted software delivery.
   - EVERY single agent (Sally UX Designer, Winston Architect, Amelia Developer, Mary Analyst, etc.) and EVERY skill (`acl-architecture`, `acl-ux`, `acl-create-epics-and-stories`, `acl-quick-dev`, `acl-figma-bridge`, etc.) across ALL AI tools (Cursor, Antigravity, AGY, GitHub Copilot, Claude Code, Windsurf, Roo Code, etc.) MUST FIRST verify that all applicable upstream phase deliverables in `_acl-output/` have `status: Approved`.
   - **Prerequisite Deliverables Scope (What Requires Approval)**:
     - Phase 1: `_acl-output/1-analysis/acl-product-brief/brief.md`
-    - Phase 2: `_acl-output/2-plan-workflows/acl-prd/prd.md`
+    - Phase 2: `_acl-output/2-plan-workflows/acl-prd/prd.md` (and `_acl-output/2-plan-workflows/acl-prd/reconcile-brief.md` if generated against an upstream brief)
     - Phase 3A: `_acl-output/3-solutioning/acl-architecture/architecture-spine.md` (or `architecture.md`)
     - Phase 3B: `_acl-output/3-solutioning/acl-create-epics-and-stories/epics.md`
     - Phase 4: `_acl-output/4-implementation/story-<epic_num>-<story_num>.md` (Tier 2) or `_acl-output/4-implementation/spec-<feature-slug>.md` (Tier 1)
-  - **STRICT EXCLUSIONS (Internal Working Files NEVER Require Approval)**:
+  - **STRICT EXCLUSIONS & BAN ON `status` IN CHILD / INTERNAL FILES**:
     - Internal working memory logs (`.memlog.md`, `*-memlog.md`), supplementary child files (`addendum.md`, `sources.md`, `research.md`, `review-triage.md`, `patch-plan.md`, `test-summary.md`), and test directories are internal AI working artifacts.
-    - AI agents MUST NEVER evaluate internal memory logs or child files for approval status, and MUST NEVER block gates based on them. Gate evaluation applies STRICTLY to the primary deliverables listed above.
+    - **ABSOLUTE PROHIBITION**: Supplementary child files (`addendum.md`, `sources.md`, `research.md`, etc.) **MUST NEVER CONTAIN A `status` FIELD IN THEIR YAML FRONTMATTER**. They are non-gated internal reference files. AI skills and agents MUST NEVER generate or set a `status:` field on any child file.
+    - AI agents across ALL tools (Cursor, Antigravity, AGY, Claude Code, Copilot, etc.) MUST NEVER evaluate internal memory logs or child files for approval status, and MUST NEVER block gates based on them. Gate evaluation applies STRICTLY and EXCLUSIVELY to the primary deliverables listed above.
   - If **ANY** required upstream phase deliverable listed above is missing, or has ANY status other than `Approved` (e.g. `In Review`, `Rejected`):
     - **TOTAL AGENT BLOCK (NO PERSONAS, NO CHATTING, NO BRAINSTORMING, NO FILE GENERATION)**:
       - The AI Agent is **STRICTLY FORBIDDEN** from adopting personas or greeting the user as an agent.
@@ -64,13 +123,17 @@ Open source framework for structured, agent-assisted software delivery.
       ========================================================================
       ```
 
-### 1. Brownfield Change Request Protocol (Interactive Tier Selection)
+### 1. Feature Addition & Change Request Protocol (Brownfield Projects)
 
-Whenever the developer asks for a feature, bugfix, or code change in a Brownfield project:
+> ℹ️ **PROJECT LIFECYCLE & TIER GOVERNANCE**:
+> - **Brand-New Greenfield Project (Day 0 Initial Creation)**: Always follows the full sequential cascade (Phase 1 Brief -> Phase 2 PRD -> Phase 3A Architecture -> Phase 3B Epics -> Phase 4 Stories). No tier selection is asked because all steps are required.
+> - **Brownfield / Existing Project (Feature Addition or Change)**: Execution tiers (**Tier 1 vs. Tier 2**) **ALWAYS apply**. The AI Agent must prompt the user to choose between Tier 1 (1-Page Spec) and Tier 2 (Major Overhaul) before writing any code.
+
+Whenever the developer asks for a feature, bugfix, or code change in a Brownfield / existing project **and explicitly tags or mentions `quick dev`**:
 
 #### Case A: Tier is Explicitly Specified in the User Prompt
 
-If the user specifies a tier (e.g., _"Tier 1: create notification drawer"_, _"Tier 2: migrate database"_, or _"use Tier 1"_), the AI Agent immediately follows the rules of that tier without asking.
+If the user specifies a tier (e.g., _"quick dev Tier 1: create notification drawer"_, _"quick dev Tier 2: migrate database"_, or _"use Tier 1"_), the AI Agent immediately follows the rules of that tier without asking.
 
 #### Case B: No Tier is Specified in the User Prompt
 
@@ -79,7 +142,7 @@ The AI Agent **MUST FIRST** output the following interactive prompt and **STOP**
 
 ```text
 ========================================================================
-📊 [BROWNFIELD ASSESSMENT]: Choose Execution Tier
+📊 [FEATURE / CHANGE ASSESSMENT]: Choose Execution Tier
 ========================================================================
 🎯 Feature / Change:   <Summary of requested work>
 💡 AI Recommendation:  [Tier 1 / Tier 2 based on blast radius]
@@ -90,7 +153,7 @@ Please choose which Tier you want to proceed with:
       📝 AI generates a 1-page Spec in _acl-output/4-implementation/ (status: In Review).
       ⏳ Code implementation is strictly LOCKED until Manager approves in Markdown Studio.
 
-  [2] Tier 2 — Major Architectural Overhaul
+  [2] Tier 2 — Major Architectural Overhaul / Full Cascade
       🏛️ Full sequential governance (Product Brief -> PRD -> Architecture Spine -> Epics).
 
 👉 Reply with 1 or 2 to proceed:
@@ -101,7 +164,7 @@ Please choose which Tier you want to proceed with:
 
 ### 2. Blast-Radius Tier Rules (2 Tiers: Tier 1 & Tier 2)
 
-> ⚠️ **GOVERNANCE POLICY**: Every change, bugfix, or feature in a Brownfield project requires at minimum a 1-Page Spec with Manager Sign-Off in Markdown Studio (**Tier 1**), or full sequential governance for major architectural overhauls (**Tier 2**). Direct unverified code generation without an approved spec is strictly forbidden.
+> ⚠️ **GOVERNANCE POLICY**: Every change, bugfix, or feature in an existing or completed project requires at minimum a 1-Page Spec with Manager Sign-Off in Markdown Studio (**Tier 1**), or full sequential governance for major architectural overhauls (**Tier 2**). Direct unverified code generation without an approved spec is strictly forbidden.
 
 #### 🟡 Tier 1: Self-Contained Features & Tweaks (1-Page Spec + Manager Approval Gate)
 
@@ -198,6 +261,176 @@ Please choose which Tier you want to proceed with:
        - If `status: Approved`: The AI Agent is **UNBLOCKED** to implement the application code for this story.
        - If `status: In Review`, `status: Rejected`, or missing: The AI Agent **REMAINS BLOCKED** and refuses to write code.
      - **Acceptance Criteria Telemetry**: Each story's acceptance criteria checklist is dynamically rendered in the Developer Dashboard (`markdown.html`), updating in real-time as stories are reviewed and approved.
+
+---
+
+### 3. Tier 2 Sequential Phase-Gate Workflow (Full Documentation Cascade)
+
+> ℹ️ **SCOPE & APPLICATION**:
+> This 4-phase sequential workflow applies to:
+> 1. **Initial MVP Creation**: Brand-new Greenfield projects being designed and built from scratch (Day 0 to MVP release).
+> 2. **Tier 2 Major Overhauls**: In existing or completed projects (Greenfield or Brownfield) when Tier 2 is selected.
+>
+> ⚠️ **SCOPE TEST BEFORE CODING**:
+> Check `epics.md` — is the requested feature ALREADY an existing approved story in `epics.md`?
+> - If **NO**: You are STRICTLY FORBIDDEN from writing application code! You must follow the selected Tier (Tier 1 spec or Tier 2 sequential pipeline starting with `brief.md`).
+> - If **YES**: Only then are you authorized to implement code for that approved story.
+
+#### Sequential Phase-Gate Cascade Workflow:
+
+1. **Phase 1 — Product Brief Update (Gate 1/4)**:
+   - The AI Agent **MUST NOT** immediately write or modify application code.
+   - The AI Agent **ONLY** appends the new feature description, problem statement, and scope in `_acl-output/1-analysis/acl-product-brief/brief.md`; sets frontmatter `status: In Review` and `project_type: greenfield`.
+   - **NO OTHER DOCUMENT** (`prd.md`, `architecture-spine.md`, `epics.md`) is created or modified at this step.
+   - **Immediate Gate Lock 1**: The AI Agent **MUST IMMEDIATELY HALT** and output:
+
+     ```text
+     ========================================================================
+     ⏳ [GATE LOCKED — Phase 1/4]: Awaiting Manager Sign-Off (Greenfield Sequential Gate)
+     ========================================================================
+     📄 Document in Review: brief.md (_acl-output/1-analysis/acl-product-brief/)
+     🏷️ Current Status:      [IN REVIEW]
+
+     ⚠️ STATUS:
+        Phase 1 of 4: The Product Brief has been updated with the new feature.
+        As per the Greenfield Sequential Gate protocol, ALL downstream phases
+        (PRD, Architecture, Epics & Stories) and application code are strictly
+        locked until the Manager approves this document.
+
+     👉 NEXT STEP:
+        Please open Markdown Studio (http://localhost:5173/markdown.html)
+        and have your Manager review and mark brief.md as 'Approved' before
+        proceeding to Phase 2 (PRD update).
+     ========================================================================
+     ```
+
+2. **Phase 2 — PRD Update (Gate 2/4)**:
+   - **Prerequisite Check**: The AI Agent MUST verify `brief.md` has `status: Approved`. If it does not, the AI Agent MUST output Gate Lock 1 and halt immediately.
+   - The AI Agent **ONLY** appends functional requirements (FRs), user stories, and acceptance criteria in `_acl-output/2-plan-workflows/acl-prd/prd.md`; sets frontmatter `status: In Review`.
+   - **NO OTHER DOCUMENT** (`architecture-spine.md`, `epics.md`) is created or modified at this step.
+   - **Immediate Gate Lock 2**: The AI Agent **MUST IMMEDIATELY HALT** and output:
+
+     ```text
+     ========================================================================
+     ⏳ [GATE LOCKED — Phase 2/4]: Awaiting Manager Sign-Off (Greenfield Sequential Gate)
+     ========================================================================
+     📄 Document in Review: prd.md (_acl-output/2-plan-workflows/acl-prd/)
+     🏷️ Current Status:      [IN REVIEW]
+
+     ⚠️ STATUS:
+        Phase 2 of 4: The PRD has been updated with functional requirements and
+        user stories for the new feature. Architecture and Epics & Stories are
+        strictly locked until the Manager approves this document.
+
+     👉 NEXT STEP:
+        Please open Markdown Studio (http://localhost:5173/markdown.html)
+        and have your Manager review and mark prd.md as 'Approved' before
+        proceeding to Phase 3A (Architecture update).
+     ========================================================================
+     ```
+
+3. **Phase 3A — Architecture Update (Gate 3/4)**:
+   - **Prerequisite Check**: The AI Agent MUST verify BOTH `brief.md` AND `prd.md` have `status: Approved`. If either does not, the AI Agent MUST output the relevant Gate Lock and halt immediately.
+   - The AI Agent **ONLY** appends component interfaces, data models, and API contracts in `_acl-output/3-solutioning/acl-architecture/architecture-spine.md`; sets frontmatter `status: In Review`.
+   - **NO OTHER DOCUMENT** (`epics.md`) is created or modified at this step.
+   - **Immediate Gate Lock 3**: The AI Agent **MUST IMMEDIATELY HALT** and output:
+
+     ```text
+     ========================================================================
+     ⏳ [GATE LOCKED — Phase 3/4]: Awaiting Manager Sign-Off (Greenfield Sequential Gate)
+     ========================================================================
+     📄 Document in Review: architecture-spine.md (_acl-output/3-solutioning/acl-architecture/)
+     🏷️ Current Status:      [IN REVIEW]
+
+     ⚠️ STATUS:
+        Phase 3 of 4: The Architecture Spine has been updated with component
+        designs and API contracts for the new feature. Epics & Stories and
+        application code are strictly locked until the Manager approves this document.
+
+     👉 NEXT STEP:
+        Please open Markdown Studio (http://localhost:5173/markdown.html)
+        and have your Manager review and mark architecture-spine.md as 'Approved'
+        before proceeding to Phase 3B (Epics & Stories update).
+     ========================================================================
+     ```
+
+4. **Phase 3B — Epics & Stories Update (Gate 4/4)**:
+   - **Prerequisite Check**: The AI Agent MUST verify `brief.md`, `prd.md`, AND `architecture-spine.md` ALL have `status: Approved`. If any does not, the AI Agent MUST output the relevant Gate Lock and halt immediately.
+   - The AI Agent **ONLY** appends the new Epic or Story with an unchecked acceptance criteria checklist (`- [ ]`) in `_acl-output/3-solutioning/acl-create-epics-and-stories/epics.md`, strictly preserving all existing completed stories (`- [x]`); sets frontmatter `status: In Review`.
+   - **NO APPLICATION CODE** is generated at this step.
+   - **Immediate Gate Lock 4**: The AI Agent **MUST IMMEDIATELY HALT** and output:
+
+     ```text
+     ========================================================================
+     ⏳ [GATE LOCKED — Phase 4/4]: Awaiting Manager Sign-Off (Greenfield Sequential Gate)
+     ========================================================================
+     📄 Document in Review: epics.md (_acl-output/3-solutioning/acl-create-epics-and-stories/)
+     🏷️ Current Status:      [IN REVIEW]
+
+     ⚠️ STATUS:
+        Phase 4 of 4: Epics & Stories have been updated with the new feature's
+        acceptance criteria checklist. Application code is strictly locked until
+        the Manager approves this final document.
+
+     👉 NEXT STEP:
+        Please open Markdown Studio (http://localhost:5173/markdown.html)
+        and have your Manager review and mark epics.md as 'Approved' before
+        proceeding with code implementation.
+     ========================================================================
+     ```
+
+5. **Phase 4 — Sequential Story Implementation via Quick Dev (`acl-quick-dev`) & Per-Story Manager Review Gate**:
+   - **Prerequisite Check**: The AI Agent MUST verify ALL four upstream documents (`brief.md`, `prd.md`, `architecture-spine.md`, `epics.md`) have exact `status: Approved`. If ANY document remains `status: In Review`, `status: Rejected`, or missing, the AI Agent **REMAINS BLOCKED** and outputs the relevant Gate Lock banner.
+   - **Story-by-Story Execution Pipeline**:
+     - Once `epics.md` is approved, the developer invokes `acl-quick-dev` (or prompts in Cursor / AGY) to implement the newly created stories.
+     - **Universal Prompt Interception**: Regardless of how the prompt is phrased (e.g., *"implement epics and stories"*, *"implement stories"*, *"implement next step"*, *"proceed with next step"*, *"start implementation"*), the AI Agent is **STRICTLY FORBIDDEN from implementing an entire epic at once or treating epic context as code**. The AI Agent **MUST AUTOMATICALLY DETECT AND SELECT THE FIRST UNCOMPLETED STORY** in `epics.md` (e.g. Story 7.1) and implement ONLY that single story.
+     - Stories are implemented **strictly one story at a time** in the order defined in `epics.md` (e.g., Story 7.1, then Story 7.2, etc.).
+     - **For each individual story (e.g. Story 7.1)**:
+       1. **Story Specification**: The AI Agent creates `_acl-output/4-implementation/story-<epic_num>-<story_num>.md` (e.g. `story-7-1.md` or in `implementation-artifacts/`) containing:
+          - Frontmatter:
+            ```yaml
+            ---
+            title: '<Story Title>'
+            story_id: '<epic_num>.<story_num>'
+            status: In Review
+            type: story
+            created: <YYYY-MM-DD>
+            ---
+            ```
+          - Story description, technical implementation plan, and the acceptance criteria checklist (`- [ ]`).
+       2. **Code Implementation & Testing**: The AI Agent implements the application code and runs tests specifically for this story.
+       3. **Immediate Per-Story Gate Lock**:
+          - Upon completing the code and verifying tests for this story, the AI Agent **MUST IMMEDIATELY HALT**.
+          - The AI Agent is **STRICTLY FORBIDDEN** from proceeding to the next story (e.g. Story 7.2) until this story is officially approved!
+          - The AI Agent **MUST** output the Story Gate Lock banner:
+
+            ```text
+            ========================================================================
+            ⏳ [GATE LOCKED — Story <epic_num>.<story_num>]: Awaiting Manager Sign-Off
+            ========================================================================
+            📄 Document in Review: story-<epic_num>-<story_num>.md (_acl-output/4-implementation/)
+            🏷️ Current Status:      [IN REVIEW]
+
+            ⚠️ STATUS:
+               Implementation for Story <epic_num>.<story_num> is complete.
+               As per the ACL-ADLC Per-Story Review Gate protocol, implementation
+               of the next story is strictly locked until your Manager reviews
+               and approves this story in Markdown Studio.
+
+            👉 NEXT STEP:
+               Please open Markdown Studio (http://localhost:5173/markdown.html)
+               and have your Manager review and mark story-<epic_num>-<story_num>.md
+               as 'Approved' before proceeding to implement the next story.
+            ========================================================================
+            ```
+
+       4. **Manager Review & Next Story Unlock**:
+          - The Manager opens Markdown Studio (`markdown.html`), inspects the story deliverable and code changes, and clicks **'Approved'** on `story-<epic_num>-<story_num>.md`.
+          - When the developer next invokes `acl-quick-dev` (or asks the AI to continue):
+            - The AI verifies that `story-<epic_num>-<story_num>.md` has exact `status: Approved`.
+            - The AI marks that story's checklist item as completed (`- [x]`) in `epics.md`.
+            - The AI is **UNBLOCKED** to implement the next story in the sequence (e.g. Story 7.2).
+     - This cycle repeats story-by-story until all newly created stories are implemented, reviewed, and approved!
 
 ---
 

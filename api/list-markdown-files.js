@@ -1,6 +1,7 @@
-// ACL-ADLC Markdown Studio Serverless List Files Endpoint (Vercel + GitHub REST API)
-const fs = require('node:fs');
-const path = require('node:path');
+// Universal Serverless Function: list-markdown-files.js
+// Works seamlessly across Vercel, Netlify, AWS Lambda, Firebase Functions, and local Node.js
+import fs from 'node:fs';
+import path from 'node:path';
 
 const EXCLUDED_FILENAMES = new Set([
   'skill.md',
@@ -110,27 +111,63 @@ function compareStoriesAndFiles(a, b) {
   return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
 }
 
-module.exports = async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-GitHub-Token');
-  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+async function universalHandler(arg1, arg2) {
+  const corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-GitHub-Token',
+    'Cache-Control': 'no-store, no-cache, must-revalidate',
+    'Content-Type': 'application/json',
+  };
 
-  if (req.method === 'OPTIONS') {
-    res.writeHead(200);
-    res.end();
-    return;
+  // Detect runtime: Node stream response (Vercel / Express) vs Lambda event/context (Netlify / AWS)
+  const isStream = Boolean(arg2 && typeof arg2.writeHead === 'function');
+
+  function reply(statusCode, payload) {
+    const bodyStr = typeof payload === 'string' ? payload : JSON.stringify(payload);
+    if (isStream) {
+      arg2.writeHead(statusCode, corsHeaders);
+      arg2.end(bodyStr);
+      return;
+    }
+    return {
+      statusCode,
+      headers: corsHeaders,
+      body: bodyStr,
+    };
+  }
+
+  const httpMethod = (isStream ? arg1.method : arg1 && arg1.httpMethod) || 'GET';
+  if (httpMethod === 'OPTIONS') {
+    return reply(200, '');
   }
 
   try {
-    const urlObj = new URL(req.url, 'http://localhost');
-    const qOwner = urlObj.searchParams.get('owner');
-    const qRepo = urlObj.searchParams.get('repo');
-    const qBranch = urlObj.searchParams.get('branch');
-    const qToken = urlObj.searchParams.get('token');
+    let qParams = {};
+    let rawHeaders = {};
 
-    const rawHeaderAuth = req.headers['authorization'] || '';
-    const rawCustomToken = req.headers['x-github-token'] || '';
+    if (isStream) {
+      const req = arg1;
+      rawHeaders = req.headers || {};
+      try {
+        const urlObj = new URL(req.url, 'http://localhost');
+        qParams = Object.fromEntries(urlObj.searchParams.entries());
+      } catch {
+        qParams = {};
+      }
+    } else {
+      const event = arg1 || {};
+      rawHeaders = event.headers || {};
+      qParams = event.queryStringParameters || {};
+    }
+
+    const qOwner = qParams.owner;
+    const qRepo = qParams.repo;
+    const qBranch = qParams.branch;
+    const qToken = qParams.token;
+
+    const rawHeaderAuth = rawHeaders['authorization'] || rawHeaders['Authorization'] || '';
+    const rawCustomToken = rawHeaders['x-github-token'] || rawHeaders['X-GitHub-Token'] || '';
 
     const token = (
       rawCustomToken ||
@@ -144,13 +181,34 @@ module.exports = async function handler(req, res) {
 
     let owner = (qOwner || process.env.GITHUB_OWNER || process.env.VERCEL_GIT_REPO_OWNER || '').trim();
     let repo = (qRepo || process.env.GITHUB_REPO || process.env.VERCEL_GIT_REPO_SLUG || '').trim();
-    const branch = (qBranch || process.env.GITHUB_BRANCH || process.env.VERCEL_GIT_COMMIT_REF || 'main').trim();
+    const branch = (
+      qBranch ||
+      process.env.GITHUB_BRANCH ||
+      process.env.VERCEL_GIT_COMMIT_REF ||
+      process.env.BRANCH ||
+      process.env.HEAD ||
+      'main'
+    ).trim();
 
+    // Auto-detect owner and repo from Netlify REPOSITORY_URL or package.json
+    if (!owner || !repo) {
+      const netlifyRepoUrl = process.env.REPOSITORY_URL || '';
+      if (netlifyRepoUrl) {
+        const match = netlifyRepoUrl.match(/github\.com[:/]([^/]+)\/([^/.]+)/);
+        if (match) {
+          if (!owner) owner = match[1];
+          if (!repo) repo = match[2].replace(/\.git$/, '');
+        }
+      }
+    }
+
+    let frameworkVersion = '6.11.44';
     if (!owner || !repo) {
       try {
         const pkgPath = path.join(process.cwd(), 'package.json');
         if (fs.existsSync(pkgPath)) {
           const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+          if (pkg.version) frameworkVersion = pkg.version;
           const repoUrl = typeof pkg.repository === 'string' ? pkg.repository : pkg.repository?.url;
           if (repoUrl) {
             const match = repoUrl.match(/github\.com[:/]([^/]+)\/([^/.]+)/);
@@ -164,10 +222,6 @@ module.exports = async function handler(req, res) {
         // Ignore package read error
       }
     }
-
-    // Default repository fallback
-    if (!owner) owner = 'karthick1827';
-    if (!repo) repo = 'jira-clone';
 
     // 1. Fetch from GitHub API if owner and repo are known
     if (owner && repo) {
@@ -246,16 +300,14 @@ module.exports = async function handler(req, res) {
             success: true,
             files: deduplicated,
             activeTier: activeTier,
-            frameworkVersion: '6.11.20',
-            version: '6.11.20',
+            frameworkVersion: frameworkVersion,
+            version: frameworkVersion,
             source: 'github',
             repo: `${owner}/${repo}`,
             branch: branch,
           };
 
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify(responsePayload));
-          return;
+          return reply(200, responsePayload);
         }
       } catch {
         // Fall back to local disk if GitHub call fails
@@ -316,25 +368,33 @@ module.exports = async function handler(req, res) {
       ? '2'
       : finalDiskList.find((f) => f.tier)?.tier || '1';
 
+    if (!fs.existsSync(scanDir) && (!owner || !repo)) {
+      return reply(400, {
+        success: false,
+        files: [],
+        error: 'No GitHub repository specified.',
+        hint: 'Please configure GITHUB_OWNER and GITHUB_REPO in environment variables, or enter them in Markdown Studio Cloud Sync settings.',
+      });
+    }
+
     const diskPayload = {
       success: true,
       files: finalDiskList,
       activeTier: diskActiveTier,
-      frameworkVersion: '6.11.20',
-      version: '6.11.20',
+      frameworkVersion: frameworkVersion,
+      version: frameworkVersion,
       source: 'local-disk',
     };
 
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify(diskPayload));
+    return reply(200, diskPayload);
   } catch (err) {
-    res.writeHead(500, { 'Content-Type': 'application/json' });
-    res.end(
-      JSON.stringify({
-        success: false,
-        files: [],
-        error: err.message,
-      }),
-    );
+    return reply(500, {
+      success: false,
+      files: [],
+      error: err.message,
+    });
   }
-};
+}
+
+module.exports = universalHandler;
+module.exports.handler = universalHandler;
